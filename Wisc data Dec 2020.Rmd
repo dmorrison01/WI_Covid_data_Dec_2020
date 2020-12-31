@@ -1,0 +1,229 @@
+---
+title: "Wisconsin Covid Data"
+author: "Kevin Little, Ph.D."
+date: "last edited 12/31/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This document shows charts of Covid-related data series.  I use data from the Wisconsin Department of Health Services web-site to display daily Covid-related deaths, hospitalizations, ICU admissions, positive cases for health care workers, and overall positive cases.
+
+The functions are the same as those used to drive the IHI Covid death data displays.  I used the same parameter choices, with one exception:  I omitted the first record in the hospitalizations, ICU admissions, and positive cases for health care workers series as these values appeared to be a cumulative value for days prior to the start of the series.
+
+
+### New admissions should be interpreted in light of capacity
+
+Both the daily new hospitalizations and ICU admissions tell only part of the story. The series I've presented only represent the flow into hospitals and ICUs; managers also need to know the current level of capacity and the flow out (discharges) to inform decisions.
+
+### Special Causes in Covid data series
+
+The hospitalization and ICU series highlight a general problem with Covid data. 
+
+In all of the series, both the underlying pandemic system and the measurement system can change over time.  The operational definitions for the items of interest are not fixed.  Control chart signals of course cannot distinguish between special causes associated with the course of the pandemic in local populations and purely measurement special causes.
+
+For example:
+
+"Thomas Tsai, an assistant professor of health policy at Harvard University, said that when resources are critically constrained, healthcare workers already facing burnout are forced to make emotionally wrenching decisions about who receives care."
+
+"There is some evidence physicians are already limiting care, Dr. Tsai said. For the last several weeks, the rate at which Covid-19 patients are going to hospitals has started decreasing. 'That suggests that there’s some rationing and stricter triage criteria about who gets admitted as hospitals remain full,' he said.   [New York Times 12/9/2020, "Intensive Care Beds Are Nearing Capacity Across the Country, New Data Shows"](https://www.nytimes.com/interactive/2020/12/09/us/covid-hospitals-icu-capacity.html)
+
+```{r get_data, include = FALSE}
+source("get_data.R")
+
+# find phase dates for both raw and adjusted data
+df_all_raw <- by(
+  data = df_all,
+  #INDICES = df_all[c('level', 'state')],
+  INDICES = df_all[c('var_name')],
+  FUN = find_phase_dates,
+  #ghost = FALSE,
+  adjust = FALSE)
+
+df_all_raw <- do.call(dplyr::bind_rows, df_all_raw)
+
+df_all_raw$type <- 'raw'
+
+df_all_adjusted <- by(
+  data = df_all,
+  #INDICES = df_all[c('level', 'state')],
+  INDICES = df_all[c('var_name')],
+  FUN = find_phase_dates,
+  adjust = TRUE)
+
+
+df_all_adjusted <- do.call(dplyr::bind_rows, df_all_adjusted)
+
+df_all_adjusted$type <- 'adjusted'
+
+df_all <- do.call(dplyr::bind_rows, list(df_all_raw, df_all_adjusted))
+
+```
+
+## Plots of the series
+
+Here are the plots of the raw series and adjusted series.  Remember that the R code attempts to detect day-of-week seasonality in Epochs 2 and 3 and adjust the daily counts.  The R code does not adjust in Epochs 1 and 4. Consequently, the display for positive cases for health care workers and ICU admissions series show only one graph as these series only show Epoch 1 behavior.  For the death series, the raw and adjusted series are identical starting in late summer, as the logic for Epochs 1 and 4 is identical. 
+
+```{r plots, echo=FALSE, warning = FALSE}
+
+graph_function <- function(data = df_var){
+  g <- ggplot(
+          data = df_var,
+          aes(
+            x = datex,
+            y = New_var)) +
+          theme_bw() +
+          geom_point() +
+          geom_line() +
+          geom_line(
+            aes(
+              y = midline),
+            color = 'red') +
+          geom_line(
+            aes(
+              y = ucl),
+            color = 'blue',
+            linetype = 'dashed') +
+          geom_line(
+            aes(
+              y = lcl),
+            color = 'blue',
+            linetype = 'dashed') +
+          geom_point(
+            aes(
+              y = New_var_Dump),
+            color = 'red') +
+          scale_y_continuous(
+            limits = c(0, max(20, 2 * max(df_var$New_var, na.rm = TRUE), max(df_var$New_var_Dump, na.rm = TRUE)))) +
+          labs(
+            x = paste0(df_var$NAME[1],"_",df_var$var_name[1]),
+            y = paste(df_var$type[1], df_var$var_name[1]))
+  
+  return(g)
+}
+
+
+
+```
+
+### Deaths
+
+```{r deaths, echo = FALSE, warning = FALSE}
+
+#raw      
+df_var <- df_all[df_all$var_name == "DEATHS" & df_all$type == "raw",]
+
+graph_function(data = df_var)
+
+df_var <- df_all[df_all$var_name == "DEATHS" & df_all$type == "adjusted",] 
+
+graph_function(data = df_var)
+
+```
+
+### New ICU admissions
+
+```{r ICU, echo = FALSE, warning = FALSE}
+
+#raw      
+df_var <- df_all[df_all$var_name == "IC_YES" & df_all$type == "raw",]
+
+graph_function(data = df_var)
+
+#df_var <- df_all[df_all$var_name == "IC_YES" & df_all$type == "adjusted",] 
+
+#graph_function(data = df_var)
+
+```
+
+#### A note on data cleaning
+
+The ICU admissions series illustrates a consequence of our method to handle apparent corrections by DHS in the raw data series.  The 'cleaned' series has unusual values induced by the method.
+
+In particular, the sequence of consecutive zeroes in September arises from the backcasting algorithm.  Here's a portion of the data:
+
+| Date | Reported Cumulative ICU admissions|Differenced Series|
+| --- | ---- | ---- |
+| ... | ... |...|
+|2020-09-15| 1090| 7 |
+|2020-09-16| 1098| 8|
+|2020-09-17| 1105| 7|
+|2020-09-18| 1110| 5|
+|2020-09-19| 1112| 2|
+|2020-09-20| 1115| 3|
+|2020-09-21| 1117| 2|
+|2020-09-22| 991 |-126|
+|2020-09-23| 998 | 7|
+|2020-09-24| 1006| 8|
+|2020-09-25| 1150|144|
+
+Differencing the cumulative ICU admissions leads to negative 126 admissions on 2020-09-22.  The backcasting logic then 'spreads' the drop of 126 admissions across earlier days in September, zeroing out days until the days zeroed out exceed 126.  
+
+Inspection of the data table shows that on 2020-09-25, the series jumps by 144 admissions, which evidently includes ICU admissions missed on the preceding three days.  
+
+The jump of 144 admissions is then 'ghosted' by the ghosting algorithm, which shows as a red point in this plot.
+
+In this case our logic fails to deliver a series for use, inducing two special cause signals.  Viewed positively, the cleaned series points to issues in September that might lead an analyst to make other choices.
+
+An alternative approach to this series:  use linear interpolation between 2020-09-21 and 2020-09-25, adding 11 admissions for each intermediate day.   
+
+It is not immediately clear to me how to we could completely automate simple data cleaning logic to accommodate the ICU case.
+
+A more useful approach that requires interaction by a human:  the code could present differenced values that are negative and give the user options.  For example, the options could include backcasting, setting negative values to zero, setting negative values to missing, or to manually editing values (e.g. use the linear interpolation suggestion).
+
+### New Hospitalizations
+
+```{r hospitalizations, echo = FALSE, warning = FALSE}
+
+#raw      
+df_var <- df_all[df_all$var_name == "HOSP_YES" & df_all$type == "raw",]
+
+graph_function(data = df_var)
+
+df_var <- df_all[df_all$var_name == "HOSP_YES" & df_all$type == "adjusted",] 
+
+graph_function(data = df_var)
+
+```
+
+### New Positive Cases for Healthcare workers
+
+```{r healthcare_positive, echo = FALSE, warning = FALSE}
+
+#raw      
+df_var <- df_all[df_all$var_name == "POS_HC_Y" & df_all$type == "raw",]
+
+graph_function(data = df_var)
+
+#df_var <- df_all[df_all$var_name == "POS_HC_Y" & df_all$type == "adjusted",] 
+
+#graph_function(data = df_var)
+
+```
+
+\newpage
+
+### New Positive Cases
+
+The zero reported values for cases (and other series) on 2020-10-17 appears to be a reporting issue related to the DPH system upgrade [discussed here](https://www.wbay.com/2020/10/17/covid-19-reporting-system-being-upgraded-by-dhs-this-weekend-temporary-outage-in-state-numbers/). This illustrates the benefit of our rule not to react to a single point outside the control limits.  
+
+The zero value appears again in the adjusted series because zero values are not used in the adjustment logic in Epochs 2 and 3 (calculations involve log10 values).
+
+```{r positive_cases, echo = FALSE, warning = FALSE}
+
+#raw      
+df_var <- df_all[df_all$var_name == "POSITIVE" & df_all$type == "raw",]
+
+graph_function(data = df_var)
+
+df_var <- df_all[df_all$var_name == "POSITIVE" & df_all$type == "adjusted",] 
+
+graph_function(data = df_var)
+
+```
