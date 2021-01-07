@@ -185,6 +185,7 @@ find_phase_dates <- function(
   data,
   adjust,
   ghost = TRUE)
+  
 {
   #message(sprintf(' -- %s-level: finding phase dates for %s', data$level[1], data$state[1]))
   message(sprintf(' -- %s-level: finding phase dates for %s', data$var_name[1], data$NAME[1]))
