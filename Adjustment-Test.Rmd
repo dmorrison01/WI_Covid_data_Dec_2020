@@ -1,0 +1,318 @@
+---
+title: "A Look at Adjustment, updated"
+author: "Kevin Little, Ph.D. Informing Ecological Design, LLC"
+date: "last edited 1/10/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE)
+library(GGally)
+library(gridExtra)
+
+#function to plot using the series
+make_plot <- function(df1){
+  
+  df1$lcl <- as.numeric(df1$lcl)
+
+  df1$New_var_Dump <- as.numeric(df1$New_var_Dump)
+  
+  g <- ggplot(
+          data = df1,
+          aes(
+            x = datex,
+            y = New_var)) +
+          theme_bw() +
+          geom_point() +
+          geom_line() +
+          geom_line(
+            aes(
+              y = midline),
+            color = 'red') +
+          geom_line(
+            aes(
+              y = ucl),
+            color = 'blue',
+            linetype = 'dashed') +
+          geom_line(
+            aes(
+              y = lcl),
+            color = 'blue',
+            linetype = 'dashed') +
+          geom_point(
+            aes(
+              y = New_var_Dump),
+            color = 'red') +
+          scale_y_continuous(
+            limits = c(0, max(20, 2 * max(df1$New_var, na.rm = TRUE), max(df1$New_var_Dump, na.rm = TRUE)))) +
+          labs(
+            x = paste0(df1$NAME[1],"_",df1$var_name[1]),
+            y = paste(df1$type[1], df1$var_name[1]))
+        
+        #print(g)
+      return(g)
+}
+
+
+#function to adjust data given the output from find_phase_dates applied to raw data series.  The residual calculation depends on epoch.
+adjust_data <- function(df,phase_index){
+    df <- df %>% 
+            filter(phase == phase_index)
+    
+    if(df$phase_records[1] >= 21) {
+        
+        if(df$epoch[1] %in% c(1,4)){
+          
+          residuals <- df$New_var - df$midline
+          
+        } else {
+          
+          residuals <- log10(df$New_var) - log10(df$midline)
+        }
+          
+        weekday <- lubridate::wday(df$datex)
+      
+        residual_by_weekday <- 
+          ave(residuals,
+            weekday,
+            FUN = function(x) median(x, na.rm = TRUE))
+      
+        if(df$epoch[1] %in% c(1,4)) {
+          
+          adjusted_var <-  df$New_var - residual_by_weekday
+          
+        } else {
+          
+          adjusted_var <- 10 ^ (log10(df$New_var) - residual_by_weekday)
+        }
+      
+        adjusted_var[is.na(df$New_var_Dump) & (!is.finite(adjusted_var) | adjusted_var < 0)] <- 0
+      
+      # normalize to actual total var in phase
+        adjusted_var <- adjusted_var * (sum(df$New_var, na.rm = TRUE) / sum(adjusted_var, na.rm = TRUE))
+      
+      df$New_var_adjusted <- round(adjusted_var)
+      
+    } else {
+      
+      df$New_var_adjusted <- df$New_var
+    }
+  
+  return(df)
+}
+
+##function to create raw plot and adjusted plot
+
+plots_out <- function(df){
+  #process raw data
+    df_raw <- find_phase_dates(data = df, adjust = FALSE, ghost = TRUE)
+
+    #create raw plot
+    p_raw <- make_plot(df1=df_raw)
+
+    p_raw <- p_raw + ggtitle(paste0("Raw ", df_raw$var_name[1]))
+    
+
+  #create adjusted data
+    col_names <- c("datex","New_var", "New_var_max","var_name","New_var_Dump", "phase", "midline", "epoch")
+    
+    df_raw <- df_raw[, col_names]
+    
+    #check for any records in a 'proto-phase': for most recent records, these will have NA for phase. Adjustment below will ignore those records
+    
+    df_extra <- df_raw[is.na(df_raw$phase),]
+    
+    dfx <- df_raw[,col_names] %>% 
+                      #mutate(residuals <- New_var - midline) %>%
+                      group_by(phase) %>%
+                      mutate(phase_records = n()) %>% 
+                      ungroup()
+
+    #Now apply the adjust_data function by phase:  replaces raw data by adjusted data.  Retain the adjusted data in df_adj0 for debugging.
+    df_adj0 <- do.call(rbind.data.frame,lapply(1:max(dfx$phase, na.rm=TRUE),adjust_data, df = dfx))
+    
+    #substitute New_var_adj for New_var when New_var has a non-missing values
+    
+    df_adj0$New_var[!is.na(df_adj0$New_var)] <- df_adj0$New_var_adjusted[!is.na(df_adj0$New_var)]
+
+    #Process the adjusted data thru the find_phase_dates function
+    df_adj <- find_phase_dates(data = df_adj0[,c(1:4)], adjust = FALSE, ghost = TRUE)
+    
+    #pad the df_adj dataframe with any proto-phase records
+    if(nrow(df_extra) > 0) {
+          n0 <- nrow(df_adj)
+          n1 <- nrow(df_extra)
+          df_adj[(n0+1):(n0+n1), ] <- NA
+          df_adj[(n0+1):(n0+n1),c(1:4)] <- df_extra[,c(1:4)]
+    }
+                   
+    #create plots of the adjusted data
+    p_adj <- make_plot(df1 = df_adj)
+
+    p_adj <- p_adj + ggtitle(paste0("Adj ", df_adj$var_name[1]))
+                         
+list_out <- list(p_raw = p_raw, p_adj = p_adj)
+
+return(list_out)
+}
+
+## function to make plots for states
+
+plot_maker_states <- function(df = df_state, state_name){
+  dfz <- df_state %>% 
+                filter(state == state_name)
+
+  z_plots <- plots_out(dfz)
+
+grid.arrange(grobs = z_plots, top = paste0(state_name," Deaths"))
+
+}
+```
+
+## Introduction
+
+As of 9 January 2021, the production version of the IHI Covid code adjusts raw data for day of week effect only for Epochs 2 and 3.   This leads to some oddities in labels:  On the IHI site, the adjusted plot for Alabama is identical to the raw plot for Alabama and the eye can see the day of week pattern.   Yes we explain what the adjustment is doing if a user clicks thru to the underlying documentation but this seems very unsatisfactory.
+
+As a first alternative, let's consider applying the adjustment to phases in Epochs 1 and 4 with the same approach used for Epochs 2 and 3:
+
+1. Require at least 21 records per phase to adjust.  
+
+2. Use the same logic as for Epochs 2 and 3:   
+    a. compute residuals from the phase midline (average), 
+    b. find the median residual by day of week 
+    c. compute the adjustment as {observed - median residual by day of week} and 
+    d. normalize the adjusted values so that the total number of events in the phase for the adjusted data is the same as for the raw data.
+    
+### Notes
+1. I have not updated the logic used here to include the extension limits (10 days beyond end of data series).
+2. I did not properly account for the log values in the document published yesterday.  I fixed thing today.  There are challenges in handling zero values in Epochs 2 and 3 (working on log scale) and applying my adjustment logic.  
+
+### Wisconsin Example:  Postive cases for Health Care workers
+If we did not modify the logic to apply adjustments to Epochs 1 and 4, using our production code would yield the same plot whether or not we set the adjust parameter to TRUE.  
+
+Now, we apply adjustments to Epoch 1 phases that meet the threshold requirements.  The plot of the adjusted series looks more plausible to my eye.  More of the data points are within the limits, for example.
+
+The period in late October early November has VERY short phases, so we never trip the requirement to have 21 values on which to base the adjustments.  You could argue that we should pass this period through the adjustment logic again.  Nonetheless, a simple one-time adjustment in this case leads to Epoch 2 followed by Epoch 3, with most of the points within the limits versus many points outside the limits in the raw plot.
+
+In the raw data, we see a stair-step pattern shown in the raw plot starting in July. We see this frequently in raw plots. The adjusted series shows exponential growth for the same period.
+
+```{r Wisconsin_example, echo = FALSE, warning = FALSE, fig.height = 8}
+source("get_data.R")
+
+Wisc_plots <- plots_out(df_all[df_all$var_name == "POS_HC_Y",])
+
+grid.arrange(grobs = Wisc_plots, top = "WI HC Positive Cases")
+
+
+
+```
+\newpage
+
+## State Death Examples:  Alabama, Louisiana, West Virginia, and Wisconsin
+In all four states, there is a strong signal associated with Thanksgiving (26 November), Christmas (25 December), and New Years (1 January), in addition to the day of week effect.  The charts do their best but are challenged by the special cause variation, which results in several short phases over the holidays. 
+
+
+```{r state_examples, warning = FALSE, echo = FALSE}
+data_file_state   <- paste0('data/us_state_data_', as.character(Sys.Date()), '.csv')
+
+if (!file.exists(data_file_state)) {
+  download.file(url = 'https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-states.csv',
+                destfile = data_file_state)
+}
+
+df_state <- read.csv(data_file_state,
+                     header = TRUE,
+                     stringsAsFactors = FALSE)
+
+df_state$datex <- as.Date(df_state$date)
+
+df_state <- df_state[order(df_state$state, df_state$datex), ]
+df_state$New_var     <- ave(df_state$deaths, df_state$state, FUN = function(x) { c(x[1], diff(x)) })
+df_state$New_var_max <- ave(df_state$New_var, df_state$state, FUN = max)
+df_state$level          <- 'state'
+
+df_state <- df_state[c('level', 'state', 'datex', 'New_var', 'New_var_max')]
+
+df_state$var_name <- "Deaths"
+
+state_names <- c("Alabama","Louisiana","Wisconsin","West Virginia")
+
+####Louisiana check
+df_LA_check <- df_state %>% 
+                filter(state == "Louisiana") %>% 
+                mutate(state = "Louisiana_NA") 
+
+df_LA_check$New_var[df_LA_check$New_var == 0 & df_LA_check$datex >= as.Date("2020-07-01")] <- as.numeric(NA)
+
+df_state <- rbind.data.frame(df_state,df_LA_check)
+
+####Holiday check
+
+df_check <- df_state %>% 
+                filter(state %in% state_names) %>% 
+                select(-c("level","New_var_max", "var_name"))
+
+df_Thanks <- df_check %>% 
+                filter(datex >= as.Date("2020-11-25") & datex <= as.Date("2020-12-02"))
+
+df_Xmas <- df_check %>% 
+                filter(datex >= as.Date("2020-12-24") & datex <= as.Date("2021-01-05"))
+
+
+knitr::kable(df_Thanks, col.names = c("State", "Date", "Reported Deaths"), caption = "Thanksgiving Impact on Reported Deaths")
+
+knitr::kable(df_Xmas, col.names = c("State", "Date", "Reported Deaths"), caption = "Dec Holiday Impact on Reported Deaths")
+
+
+
+```
+
+\newpage
+### Alabama
+The Alabama adjusted chart is similar to the raw plot, again with short Epoch 1 phases leading to no adjustments.
+
+```{r state_examples1, warning = FALSE, echo = FALSE, fig.height = 8}
+
+plots_ALABAMA <- plot_maker_states(state_name = "Alabama")
+
+```
+
+\newpage
+### Louisiana
+The Louisiana adjusted chart does not handle the weekly zero values on Sundays:  starting in July, Louisiana is in Epoch 2 or 3.  In these two Epochs, arithmetic is on the log scale.  We do not compute a finite residual for those days, as the formula requires a finite log10 value.  The default R code produces -Inf when log10 is applied to zero.  Exponentiating -Inf gives back zero and so zero values are displayed on the adjusted plot.  
+
+The second set of plots labeled Lousiana_NA sets the zero values starting in July to NA, not available.  The limits and center lines when you compare the two raw plots and the two adjusted plots are the same.  The calculations of the limits and center lines don't change given that zero values are not affecting log scale calculations. 
+
+The red dots indicate that some values are ghosted:  the ghosting logic is confused by the multiple missing values clustered around the December holidays as the values actually ghosted aren't dissimilar to neighboring values.   I will look into this tomorrow morning.
+
+```{r state_examples4, warning = FALSE, echo = FALSE, fig.height = 8}
+
+plots_Louisiana <- plot_maker_states(state_name = "Louisiana")
+
+plots_Lousiana_NA <- plot_maker_states(state_name = "Louisiana_NA")
+
+```
+
+\newpage
+### West Virginia
+Note the stair-step pattern in the raw plot (October to January). The adjusted plot shows exponential growth and then drop-off.
+
+```{r state_examples3, warning = FALSE,echo = FALSE, fig.height = 8}
+
+plots_WVa <- plot_maker_states(state_name = "West Virginia")
+
+```
+
+
+### Wisconsin
+The Wisconsin adjusted plot looks better in the Oct to Dec period:  rather than have step-wise increases with strong signals of day effect, the adjusted plot shows exponential growth and then dampening and falling off, which seems to match my sense of conditions here in the state.  The Thanksgiving effect is associated with the drop from one Epoch 2 phase to the Epoch 2 phase with lower exponential growth.
+
+```{r state_examples2, warning = FALSE, echo = FALSE, fig.height = 8}
+
+plots_WISCONSIN <- plot_maker_states(state_name = "Wisconsin")
+
+
+```
+
