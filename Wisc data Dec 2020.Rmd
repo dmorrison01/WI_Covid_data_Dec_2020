@@ -1,10 +1,10 @@
 ---
 title: "Wisconsin Covid Data"
 author: "Kevin Little, Ph.D."
-date: "last edited 12/31/2020"
+date: "last edited 1/18/2021 with find_phase_dates function with corrected adjust and extension"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -33,6 +33,10 @@ For example:
 "Thomas Tsai, an assistant professor of health policy at Harvard University, said that when resources are critically constrained, healthcare workers already facing burnout are forced to make emotionally wrenching decisions about who receives care."
 
 "There is some evidence physicians are already limiting care, Dr. Tsai said. For the last several weeks, the rate at which Covid-19 patients are going to hospitals has started decreasing. 'That suggests that there’s some rationing and stricter triage criteria about who gets admitted as hospitals remain full,' he said.   [New York Times 12/9/2020, "Intensive Care Beds Are Nearing Capacity Across the Country, New Data Shows"](https://www.nytimes.com/interactive/2020/12/09/us/covid-hospitals-icu-capacity.html)
+
+Reported deaths are also subject to measurement issues. "When covid patients die, the 'immediate' cause of death is always something else, such as respiratory failure or cardiac arrest. Residents, doctors, medical examiners and coroners make the call on whether covid was an underlying factor, or 'contributory cause.' If so, the diagnosis should be included on the death certificate, according to the Centers for Disease Control and Prevention."
+
+"Even beyond the pandemic, there is wide variation in how certifiers describe causes of death: 'There’s just no such thing as an objective measure of cause of death,' said Lee Anne Flagg, a statistician at the CDC’s National Center for Health Statistics."  [Kaiser Health News 1/15/2021](https://khn.org/news/article/when-covid-deaths-arent-counted-families-pay-the-price)
 
 ```{r get_data, include = FALSE}
 source("get_data.R")
@@ -71,6 +75,7 @@ df_all <- do.call(dplyr::bind_rows, list(df_all_raw, df_all_adjusted))
 Here are the plots of the raw series and adjusted series.  Remember that the R code attempts to detect day-of-week seasonality in Epochs 2 and 3 and adjust the daily counts.  The R code does not adjust in Epochs 1 and 4. Consequently, the display for positive cases for health care workers and ICU admissions series show only one graph as these series only show Epoch 1 behavior.  For the death series, the raw and adjusted series are identical starting in late summer, as the logic for Epochs 1 and 4 is identical. 
 
 ```{r plots, echo=FALSE, warning = FALSE}
+library(plotly)
 
 graph_function <- function(data = df_var){
   g <- ggplot(
@@ -105,7 +110,11 @@ graph_function <- function(data = df_var){
             x = paste0(df_var$NAME[1],"_",df_var$var_name[1]),
             y = paste(df_var$type[1], df_var$var_name[1]))
   
-  return(g)
+  g1 <- ggplotly(g, dynamicTicks=TRUE)
+  
+  return(g1)
+  
+  
 }
 
 
@@ -136,9 +145,9 @@ df_var <- df_all[df_all$var_name == "IC_YES" & df_all$type == "raw",]
 
 graph_function(data = df_var)
 
-#df_var <- df_all[df_all$var_name == "IC_YES" & df_all$type == "adjusted",] 
+df_var <- df_all[df_all$var_name == "IC_YES" & df_all$type == "adjusted",] 
 
-#graph_function(data = df_var)
+graph_function(data = df_var)
 
 ```
 
@@ -201,9 +210,9 @@ df_var <- df_all[df_all$var_name == "POS_HC_Y" & df_all$type == "raw",]
 
 graph_function(data = df_var)
 
-#df_var <- df_all[df_all$var_name == "POS_HC_Y" & df_all$type == "adjusted",] 
+df_var <- df_all[df_all$var_name == "POS_HC_Y" & df_all$type == "adjusted",] 
 
-#graph_function(data = df_var)
+graph_function(data = df_var)
 
 ```
 
