@@ -180,22 +180,31 @@ model_phase_change <- function(
   output
 }
 
-#function to determine phases with control limits and center lines
+
+
+############new version of find_phase_dates with extension 10 days and adjustment for Epochs 1 and 4  
+# based on IHI production version 11 Jan 2021
+
 find_phase_dates <- function(
   data,
   adjust,
-  ghost = TRUE)
-  
+  ghost = TRUE,
+  extend_days = 10)
 {
-  #message(sprintf(' -- %s-level: finding phase dates for %s', data$level[1], data$state[1]))
-  message(sprintf(' -- %s-level: finding phase dates for %s', data$var_name[1], data$NAME[1]))
+  message(sprintf(' -- %s-level: finding phase dates for %s', data$NAME[1], data$var_name[1]))
+  
   result <- try({
+    
+    if (adjust) {
+      extend_days_unadjusted <- extend_days
+      extend_days <- 0
+    }
     
     data <- data[order(data$datex), ]
     
     # Remove negative var by iteratively reducing the counts (to floor of 0) 
     # on preceding days.
-    #data$New_var <- force_monotonicity(data$New_var)
+    data$New_var <- force_monotonicity(data$New_var)
     
     # Detect 'ghost' points - only run for raw series
     # Note ghost argument is TRUE by default, because 1) we want it TRUE for raw series, and
@@ -207,7 +216,7 @@ find_phase_dates <- function(
       data$New_var_Dump <- NA
       
       ghost_dates <- detect_outlier_dates(data[c('datex', 'New_var')])
-    
+      
       ghost_index <- data$datex %in% ghost_dates
       
       if (any(ghost_index)) {
@@ -229,7 +238,7 @@ find_phase_dates <- function(
       data_var$weekday <- lubridate::wday(data_var$datex)
       
       date_max <- max(data_var$datex, na.rm = TRUE)
-       
+      
       cumulative_var <- cumsum(ifelse(is.na(data_var$New_var),
                                          0,
                                          data_var$New_var))
@@ -241,16 +250,18 @@ find_phase_dates <- function(
       # (increments on every phase change, except new epochs, when it resets to 1)
       phase <- 1
       epoch_phase <- 1
-            
+      
       if (any(cumulative_var >= 8)) {
         
         while (date_phase_start <= (date_max - 4)) {
           
           message(' -- Epoch ', epoch, ', phase ', phase, ' overall, phase ', epoch_phase, ' within epoch: ', date_phase_start)
-
+          
           phase_index <- data_var$datex >= date_phase_start
           
-          # need 8+ cumulative values in phase to estimate midline and ucl
+         # browser()
+          
+          # need 8+ cumulative var in phase to estimate midline and ucl
           cumulative_var_phase <- cumsum(data_var$New_var[phase_index])
           parameter_date <- data_var$datex[phase_index][which.max(cumulative_var_phase >= 8)]
           
@@ -263,7 +274,7 @@ find_phase_dates <- function(
             
             date_check_original <-
               date_check <- min(max(date_phase_start + 4, parameter_date), date_max)
-
+            
             while (date_check <= date_max) {
               
               midline_index <- data_var$datex >= date_phase_start & data_var$datex <= min(date_check, date_phase_start + 20)
@@ -297,12 +308,12 @@ find_phase_dates <- function(
               else above_ucl_streak_index <- head(which(above_ucl_streak == 2), 1) - 1
               
               date_above_ucl <- data_var$datex[check_index][above_ucl_streak_index]
-
+              
               # find the first date that values are above or below midline for 8 days in a row
               above_midline <- observed_values[check_index] > midline & !is.na(observed_values[check_index])
               above_midline_streak <- ave(above_midline, cumsum(!above_midline), FUN = cumsum)
               date_above_midline <- data_var$datex[check_index][head(which(above_midline_streak == 8), 1)]
-
+              
               below_midline <- observed_values[check_index] < midline & !is.na(observed_values[check_index])
               below_midline_streak <- ave(below_midline, cumsum(!below_midline), FUN = cumsum)
               date_below_midline <- data_var$datex[check_index][head(which(below_midline_streak == 8), 1)]
@@ -312,14 +323,14 @@ find_phase_dates <- function(
               # if no phase end condition was detected, date_phase_end will be -Inf
               # if date_phase was detected (finite), break the loop
               if (is.finite(date_phase_end)) {
-
+                
                 break
                 
               } else date_check <- date_check + 1
             }
             
             if (!is.finite(date_phase_end)) {              
-              date_phase_end <- date_max
+              date_phase_end <- date_max + extend_days
             }
             
           } else if (epoch %in% c(2, 3)) {
@@ -327,11 +338,11 @@ find_phase_dates <- function(
             if (phase_change_result$exp_growth) {
               
               data_var$serial_day <- as.numeric(difftime(data_var$datex, date_phase_start, units = 'days')) + 1
-  
+              
               midline <- predict(phase_change_result$lm, data_var)
               
               data_var$serial_day <- NULL
-            
+              
             } else {
               
               midline <- phase_change_result$mean_var
@@ -374,7 +385,7 @@ find_phase_dates <- function(
               
               streak_sign <- 0
               streak_length <- 0
-            
+              
               for (residual_i in seq_along(residuals_check)) {
                 
                 residual <- residuals_check[residual_i]
@@ -389,7 +400,7 @@ find_phase_dates <- function(
                 }
                 
                 streak_found <- streak_length == 8 
-                  
+                
                 if (streak_found) {
                   date_streak <- data_var$datex[check_index][residual_i]
                   break
@@ -409,9 +420,25 @@ find_phase_dates <- function(
             }
             
             if (!is.finite(date_phase_end)) {              
-              date_phase_end <- date_max
-            }
               
+              date_phase_end <- date_max + extend_days
+              
+              if (extend_days > 0) {
+                # extend midline and ucl/lcl
+                data_extend <- data.frame(
+                  datex = c(data_var$datex, date_max + seq_len(extend_days))) 
+                
+                data_extend$serial_day <- as.numeric(difftime(data_extend$datex,
+                                                              date_phase_start, 
+                                                              units = 'days')) + 1
+                #17 January 2021:  how does this handle Epochs 1, 4 and Epoch 3 when we use mean of values?
+                midline <- predict(phase_change_result$lm, data_extend)
+                
+                # need to extend phase_index too
+                phase_index <- data_extend$datex >= date_phase_start
+              }
+            }
+            
             phase_days <- as.numeric(difftime(date_phase_end, date_phase_start, units = 'day')) + 1
             
             if (length(midline) > 1) {
@@ -452,8 +479,13 @@ find_phase_dates <- function(
             start = date_phase_start,
             end   = date_phase_end)
           
+          #conditional check for WI deaths which has p > = 13 phases
+           # if(phase == 14) {
+           #   browser()
+           # }
+       
           phase_data[[phase]] <- phase_parameters
-
+          
           if (date_phase_end < (date_max - 4)) {
             
             model_index <- data_var$datex > date_phase_end & data_var$datex <= min(date_phase_end + 21, date_max, na.rm = TRUE)
@@ -466,29 +498,29 @@ find_phase_dates <- function(
             epoch_phase <- epoch_phase + 1
             
             if (phase_change_result$exp_growth && phase_change_result$growth_sign == 1) {
-           
+              
               if (epoch != 2) {
                 epoch <- 2
                 epoch_phase <- 1
               }
               
             } else {
-
+              
               if (epoch == 2) {
                 
                 epoch <- 3
                 epoch_phase <- 1
                 
               } else if (epoch == 3) {
-              
+                
                 # Epoch 4 requires:
                 # 1. current phase LCL < 2, AND
                 #   2a. phase change due to points below UCL, OR
                 #   2b. phase change due to streak below midline (residual sign -1)
                 # This excludes phase changes due to an uptick in cases.
                 epoch_4 <- phase_parameters$lcl < 2 &&
-                          (length(date_below_ucl) == 1 ||
-                          (length(date_streak) == 1 && streak_sign == -1))
+                  (length(date_below_ucl) == 1 ||
+                     (length(date_streak) == 1 && streak_sign == -1))
                 
                 if (epoch_4) {
                   epoch <- 4
@@ -500,6 +532,25 @@ find_phase_dates <- function(
           
           date_phase_start <- date_phase_end + 1
         }
+        
+        # Add blank phase extending out 10 days from date_phase_max
+        if (date_phase_start < date_max) {
+          
+          phase <- phase + 1
+          
+          date_phase_end <- date_max + extend_days
+          
+          phase_parameters[[phase]] <- list(
+            phase = phase,
+            epoch = epoch,
+            midline = NA,
+            lcl = NA,
+            ucl = NA,
+            start = date_phase_start,
+            end   = date_phase_end)
+          
+        }
+        
       } else {
         
         phase_data[[phase]] <- list(
@@ -514,6 +565,26 @@ find_phase_dates <- function(
       }
     }
     
+    if (extend_days > 0) {
+      
+      data_extend <- data.frame(
+        # level = data$level[1],
+        # state = data$state[1],
+        GEOID = rep(data$GEOID[1],extend_days),
+        GEO = rep(data$GEO[1], extend_days),
+        NAME = rep(data$NAME[1],extend_days),
+        datex = seq(date_max + 1, date_max + extend_days, by = 'day'),
+        New_var = NA,
+        New_var_max = NA,
+        New_var_Dump = NA,
+        var_cum = NA,
+        var_name = rep(data$var_name[1], extend_days),
+        stringsAsFactors = FALSE)
+      # browser()
+      data <- rbind(data, data_extend)  
+    }
+    
+   # browser()
     for (phase_parameters in phase_data) {
       
       index <- data$datex >= phase_parameters$start & data$datex <= phase_parameters$end
@@ -525,14 +596,19 @@ find_phase_dates <- function(
       data$lcl[index]     <- phase_parameters$lcl
       data$ucl[index]     <- phase_parameters$ucl
       data[[paste0('DatePhase', phase_parameters$phase)]] <- phase_parameters$start
-
+      
       # Only adjust series if 1) requested by user,
       # 2) epoch is 2 or 3,
       # 3) at least 21 days of records were observed in this phase.
-      if (adjust && phase_parameters$epoch %in% c(2, 3) && sum(index) >= 21) {
+      # if (adjust && phase_parameters$epoch %in% c(2, 3) && sum(index) >= 21) {
+      if (adjust && sum(index) >= 21) {
         
-        residuals <- log10(data$New_var) - log10(data$midline)
-
+        if (phase_parameters$epoch %in% c(2, 3)) {
+          residuals <- log10(data$New_var) - log10(data$midline)
+        } else {
+          residuals <- data$New_var - data$midline
+        }
+        
         data$weekday <- lubridate::wday(data$datex)
         
         data$residual_by_weekday[index] <- 
@@ -540,8 +616,13 @@ find_phase_dates <- function(
               data$weekday[index],
               FUN = function(x) median(x, na.rm = TRUE))
         
-        adjusted_var <- 10 ^ 
-          (log10(data$New_var[index]) - data$residual_by_weekday[index])
+        if (phase_parameters$epoch %in% c(2, 3)) {
+          
+          adjusted_var <- 10 ^ 
+            (log10(data$New_var[index]) - data$residual_by_weekday[index])
+        } else {
+          adjusted_var <- data$New_var[index] - data$residual_by_weekday[index]
+        }
         
         adjusted_var[is.na(data$New_var_Dump[index]) & (!is.finite(adjusted_var) | adjusted_var < 0)] <- 0
         
@@ -553,25 +634,30 @@ find_phase_dates <- function(
         data$residual_by_weekday <- NULL
       }
     }
-    
+    # browser()
     if (adjust) {
+      
       data$New_var[!is.finite(data$New_var) & is.na(data$New_var_Dump)] <- 0
       
-      data <- find_phase_dates(data = data[c('GEO', 'NAME', 'datex', 'New_var', 'New_var_max', 'New_var_Dump', 'var_name')],
+      # data <- find_phase_dates(data = data[c('level', 'state', 'datex', 'New_var', 'New_var_max', 'New_var_Dump')],
+      #                          adjust = FALSE,
+      #                          ghost = FALSE,
+      #                          extend_days = extend_days_unadjusted)
+      # 17 Jan 2021 repair to match the variables in data dataframe.  Drop the GEO used in the Wisconsin files.
+      data <- find_phase_dates(data = data[c('GEOID','GEO','NAME', 'datex', 'var_cum','New_var', 'New_var_max', 'New_var_Dump', 'var_name')],
                                adjust = FALSE,
-                               ghost = FALSE)
-      
+                               ghost = FALSE,
+                               extend_days = extend_days_unadjusted)
     }
     
-    #the next conditions create the values for final Epoch, I don't understand why the country and state are different in the 
-    #original code.   We don't need the values in the adaptation I am making here...
-    #if (data$level[1] == 'state') {
-      #data$EPOCH_last <- tail(data$epoch[!is.na(data$epoch)], 1)
-      
-      #data$EPOCH_last[is.infinite(data$EPOCH_last)] <- NA
-   # } else if (data$level[1] == 'country') {
-   #   data$EPOCH <- data$epoch
-  #  }
+    #17 Jan 2021 The next conditional code is not used in my adjusted project.   Do not understand why used
+    # if (data$level[1] == 'state') {
+    #   data$EPOCH_last <- tail(data$epoch[!is.na(data$epoch)], 1)
+    #   
+    #   data$EPOCH_last[is.infinite(data$EPOCH_last)] <- NA
+    # } else if (data$level[1] == 'country') {
+    #   data$EPOCH <- data$epoch
+    # }
     
     data <- data[data$datex >= phase_data[[1]]$start, ]
   })
@@ -580,10 +666,11 @@ find_phase_dates <- function(
     #browser()
     message(' -- Error encountered for ', data$var_name[1])
   }
-
+  
   data
 }
-  
+
+
 
 ##############functions to read the JSON files from WI DPH website
 JSON_fread_state <- function(state_url = state_url){
