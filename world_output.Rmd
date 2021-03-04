@@ -79,7 +79,7 @@ df_all <- do.call(dplyr::bind_rows, list(df_all_raw, df_all_adjusted))
 
 
 
-```{r plot_function, echo = TRUE}
+```{r plot_function, echo = FALSE}
 library(plotly)
 
 graph_function <- function(data = df_var, title = NULL, subtitle = NULL){
