@@ -82,7 +82,7 @@ df_all <- do.call(dplyr::bind_rows, list(df_all_raw, df_all_adjusted))
 ```{r plot_function, echo = TRUE}
 library(plotly)
 
-graph_function <- function(data = df_var){
+graph_function <- function(data = df_var, title = NULL, subtitle = NULL){
   g <- ggplot(
           data = df_var,
           aes(
@@ -112,6 +112,8 @@ graph_function <- function(data = df_var){
           scale_y_continuous(
             limits = c(0, max(20, 2 * max(df_var$New_var, na.rm = TRUE), max(df_var$New_var_Dump, na.rm = TRUE)))) +
           labs(
+            title = title,
+            subtitle = subtitle,
             x = paste0(df_var$NAME[1],"_",df_var$var_name[1]),
             y = paste(df_var$type[1], df_var$var_name[1]))
   
@@ -128,7 +130,7 @@ graph_function <- function(data = df_var){
 
 
 ```{r plot, echo=FALSE}
-plot(pressure)
+
 
 df_all$lcl <- as.numeric(df_all$lcl)
 df_all$New_var_Dump <- as.numeric(df_all$New_var_Dump)
@@ -136,12 +138,15 @@ df_all$New_var_Dump <- as.numeric(df_all$New_var_Dump)
 #raw      
 df_var <- df_all[df_all$var_name == "Deaths" & df_all$type == "raw",]
 
-graph_function(data = df_var) + labs(title = "Reported Deaths from Covid-19")
+title <-  "World Reported Deaths from Covid-19"
+
+graph_function(data = df_var, title = title) 
 
 df_var <- df_all[df_all$var_name == "Deaths" & df_all$type == "adjusted",] 
 
-graph_function(data = df_var) + labs(title = "Reported Deaths from Covid-19", 
-                                     subtitle = "Adjusted for day of week effect")
+subtitle <- "Adjusted for day of week effect"
+
+graph_function(data = df_var, title = title, subtitle = subtitle) 
 ```
 
 
