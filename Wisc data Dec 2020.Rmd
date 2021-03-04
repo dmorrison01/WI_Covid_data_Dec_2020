@@ -48,7 +48,8 @@ df_all_raw <- by(
   INDICES = df_all[c('var_name')],
   FUN = find_phase_dates,
   #ghost = FALSE,
-  adjust = FALSE)
+  adjust = FALSE,
+  extend_days = 10)
 
 df_all_raw <- do.call(dplyr::bind_rows, df_all_raw)
 
@@ -59,7 +60,8 @@ df_all_adjusted <- by(
   #INDICES = df_all[c('level', 'state')],
   INDICES = df_all[c('var_name')],
   FUN = find_phase_dates,
-  adjust = TRUE)
+  adjust = TRUE,
+  extend_days = 10 )
 
 
 df_all_adjusted <- do.call(dplyr::bind_rows, df_all_adjusted)
