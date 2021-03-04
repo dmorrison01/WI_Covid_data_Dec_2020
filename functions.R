@@ -328,7 +328,7 @@ find_phase_dates <- function(
                 
               } else date_check <- date_check + 1
             }
-            
+            # browser()
             if (!is.finite(date_phase_end)) {              
               date_phase_end <- date_max + extend_days
             }
@@ -431,8 +431,17 @@ find_phase_dates <- function(
                 data_extend$serial_day <- as.numeric(difftime(data_extend$datex,
                                                               date_phase_start, 
                                                               units = 'days')) + 1
-                #17 January 2021:  how does this handle Epochs 1, 4 and Epoch 3 when we use mean of values?
-                midline <- predict(phase_change_result$lm, data_extend)
+                # #17 January 2021:  how does this handle Epochs 1, 4 and Epoch 3 when we use mean of values?
+                # midline <- predict(phase_change_result$lm, data_extend)
+                # Correction 25 January 2021
+                # if exponential growth is detected (up or down),
+                # extend the model prediction, otherwise just
+                # extend the constant value to the extended date interval
+                if (phase_change_result$exp_growth) {
+                  midline <- predict(phase_change_result$lm, data_extend)
+                } else if (epoch == 3) {
+                  midline <- rep(midline[1], nrow(data_extend))
+                }
                 
                 # need to extend phase_index too
                 phase_index <- data_extend$datex >= date_phase_start
@@ -479,10 +488,10 @@ find_phase_dates <- function(
             start = date_phase_start,
             end   = date_phase_end)
           
-          #conditional check for WI deaths which has p > = 13 phases
-           # if(phase == 14) {
-           #   browser()
-           # }
+          #conditional check 
+           #if(phase == 9) {
+              # browser()
+          #} }
        
           phase_data[[phase]] <- phase_parameters
           
@@ -564,7 +573,7 @@ find_phase_dates <- function(
         
       }
     }
-    
+    # browser()
     if (extend_days > 0) {
       
       data_extend <- data.frame(
