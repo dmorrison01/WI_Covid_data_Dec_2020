@@ -1,21 +1,27 @@
 ---
 title: "Wisconsin Covid Data"
 author: "Kevin Little, Ph.D."
-date: "last edited 1/18/2021 with find_phase_dates function with corrected adjust and extension"
+date: "last edited 3/9/2021"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
+urlcolor: blue
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+#Set value of output_format to pdf or Word if static plots desired and you knit to Word or pdf; set to HTML for interactive plotly objects
+output_format <- "pdf"
 ```
 
 ## Introduction
 
 This document shows charts of Covid-related data series.  I use data from the Wisconsin Department of Health Services web-site to display daily Covid-related deaths, hospitalizations, ICU admissions, positive cases for health care workers, and overall positive cases.
 
-The functions are the same as those used to drive the IHI Covid death data displays.  I used the same parameter choices, with one exception:  I omitted the first record in the hospitalizations, ICU admissions, and positive cases for health care workers series as these values appeared to be a cumulative value for days prior to the start of the series.
+The functions are the same as those used to drive the IHI Covid death data displays.  This  [file](https://github.com/klittle314/IHI_Covid_Public/blob/main/README.md) has detailed explanation of the algorithm and parameters used in the death data displays, including explanation of our adjustment for day of week effect.
+
+For the Wisconsin series, I used the same parameter choices, with one exception:  I omitted the first record in the hospitalizations, ICU admissions, and positive cases for health care workers series as these values appeared to be a cumulative value for days prior to the start of the series.
 
 
 ### New admissions should be interpreted in light of capacity
@@ -74,9 +80,9 @@ df_all <- do.call(dplyr::bind_rows, list(df_all_raw, df_all_adjusted))
 
 ## Plots of the series
 
-Here are the plots of the raw series and adjusted series.  Remember that the R code attempts to detect day-of-week seasonality in Epochs 2 and 3 and adjust the daily counts.  The R code does not adjust in Epochs 1 and 4. Consequently, the display for positive cases for health care workers and ICU admissions series show only one graph as these series only show Epoch 1 behavior.  For the death series, the raw and adjusted series are identical starting in late summer, as the logic for Epochs 1 and 4 is identical. 
+Here are the plots of the raw series and adjusted series. Adjustments for day of week effect are made only for phases with at least 21 observations.
 
-```{r plots, echo=FALSE, warning = FALSE}
+```{r plots, echo=FALSE, warning = FALSE, include = FALSE}
 library(plotly)
 
 graph_function <- function(data = df_var){
@@ -112,10 +118,16 @@ graph_function <- function(data = df_var){
             x = paste0(df_var$NAME[1],"_",df_var$var_name[1]),
             y = paste(df_var$type[1], df_var$var_name[1]))
   
-  g1 <- ggplotly(g, dynamicTicks=TRUE)
   
-  return(g1)
+  if(output_format == "HTML") {
+      g1 <- ggplotly(g, dynamicTicks=TRUE)
   
+      return(g1)
+  }
+  
+  else {
+       return(g)
+  }
   
 }
 
