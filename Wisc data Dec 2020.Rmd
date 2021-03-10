@@ -3,8 +3,8 @@ title: "Wisconsin Covid Data"
 author: "Kevin Little, Ph.D."
 date: "last edited 3/9/2021"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 urlcolor: blue
 ---
 
@@ -12,7 +12,7 @@ urlcolor: blue
 knitr::opts_chunk$set(echo = TRUE)
 
 #Set value of output_format to pdf or Word if static plots desired and you knit to Word or pdf; set to HTML for interactive plotly objects
-output_format <- "pdf"
+output_format <- "HTML"
 ```
 
 ## Introduction
