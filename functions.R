@@ -183,13 +183,18 @@ model_phase_change <- function(
 
 
 ############new version of find_phase_dates with extension 10 days and adjustment for Epochs 1 and 4  
-# based on IHI production version 11 Jan 2021
+# based on IHI production version 11 Jan 2021.   
+# Note the parameter Epoch3_4_transition is used to test for start of Epoch 4.  For deaths, we set this parameter
+# to be 2:  the LCL in the current phase in Epoch 3 must be less than 2 to commence Epoch 4.   For other series, the 
+# parameter might plausibly be set to a larger value.   For cases, we have set the limit to 100 for a country with millions of 
+# people.   Sensitivity to this transition parameter might be a study aspect.
 
 find_phase_dates <- function(
   data,
   adjust,
   ghost = TRUE,
-  extend_days = 10)
+  extend_days = 10,
+  Epoch3_4_transition = 2)
 {
   message(sprintf(' -- %s-level: finding phase dates for %s', data$NAME[1], data$var_name[1]))
   
@@ -523,11 +528,11 @@ find_phase_dates <- function(
               } else if (epoch == 3) {
                 
                 # Epoch 4 requires:
-                # 1. current phase LCL < 2, AND
+                # 1. current phase LCL < 2 for deaths generalized to Epoch3_4_transition, AND
                 #   2a. phase change due to points below UCL, OR
                 #   2b. phase change due to streak below midline (residual sign -1)
                 # This excludes phase changes due to an uptick in cases.
-                epoch_4 <- phase_parameters$lcl < 2 &&
+                epoch_4 <- phase_parameters$lcl < Epoch3_4_transition &&
                   (length(date_below_ucl) == 1 ||
                      (length(date_streak) == 1 && streak_sign == -1))
                 
