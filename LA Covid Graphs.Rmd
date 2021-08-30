@@ -1,0 +1,253 @@
+---
+title: "la covid test"
+author: "Ami Sheth"
+date: "03/04/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Sourcing functions from `function_cc.R`
+
+```{r, echo=FALSE}
+setwd("~/Documents/iCloud Drive (Archive)/Documents/COVID Research")
+library("dplyr")
+library('readxl')
+library(plotly)
+library(fs)
+library(lubridate)
+library(tidyr)
+library(magrittr)
+library(readr)
+library('scales')
+
+library("sf")
+library("stringr")
+
+options('digits' = 3)
+source("function_cc.R")
+```
+
+
+## Finding the phases for raw and adjusted data 
+
+```{r get_data, include = FALSE}
+
+# find phase dates for both raw and adjusted data
+
+phase_data <- function(data_all){
+  data_all_raw <- by(
+  data = data_all,
+  INDICES = data_all[c('var_name')],
+  FUN = find_phase_dates,
+  #ghost = TRUE,
+  adjust = FALSE)
+
+data_all_raw <- do.call(dplyr::bind_rows, data_all_raw)
+
+data_all_raw$type <- 'Raw'
+
+data_all_adjusted <- by(
+  data = data_all,
+  INDICES = data_all[c('var_name')],
+  FUN = find_phase_dates,
+  #ghost = TRUE,
+  adjust = TRUE)
+
+
+data_all_adjusted <- do.call(dplyr::bind_rows, data_all_adjusted)
+
+data_all_adjusted$type <- 'Adjusted'
+
+data_all <- do.call(dplyr::bind_rows, list(data_all_raw, data_all_adjusted))
+# d2 <- data_all %>% mutate(New_var_Dump = as.numeric(New_var_Dump))
+}
+
+```
+
+## Plot the data
+
+```{r plots, echo=FALSE, warning = FALSE}
+# function to graph 
+graph_function <- function(data = df_var){
+  g <- ggplot(
+          data = df_var,
+          aes(
+            x = datex,
+            y = New_var)) +
+          theme_bw() +
+          geom_point() +
+          geom_line() +
+          geom_line(
+            aes(
+              y = midline),
+            color = 'red') +
+          geom_line(
+            aes(
+              y = ucl),
+            color = 'blue',
+            linetype = 'dashed') +
+          geom_line(
+            aes(
+              y = lcl),
+            color = 'blue',
+            linetype = 'dashed') +
+          # geom_point(
+          #   aes(
+          #     y = New_var_Dump),
+          #   color = 'red') +
+          scale_y_continuous(
+            limits = c(0, max(20, 2 * max(df_var$New_var, na.rm = TRUE), max(df_var$New_var_Dump, na.rm = TRUE)))) +
+          scale_x_date(date_labels = "%b %d", breaks = "2 weeks") +
+          theme_minimal() +
+          labs(
+            x = "",
+            y = paste(df_var$type[1], df_var$var_name[1]),
+            title = paste("SPC Chart for", df_var$type[1], "Confirmed Cases")) + 
+          theme(axis.text.x = element_text(angle = -45, vjust = 0.2, hjust=0.5))
+          
+  
+  return(g)
+}
+
+# functions to separate the raw and adjusted data
+raw_data <- function(data_all){
+  df_raw <- data_all[data_all$var_name == "Confirmed Cases" & data_all$type == "Raw",]
+  # df_var <- d2[d2$var_name == "confirmed_cases" & d2$type == "raw",]
+}
+
+adj_data <- function(data_all){
+  df_adj <- data_all[data_all$var_name == "Confirmed Cases" & data_all$type == "Adjusted",]
+  # df_var <- d2[d2$var_name == "confirmed_cases" & d2$type == "adjusted",] 
+}
+```
+
+### Confirmed Cases for all of LA county, graphing using function
+
+```{r confirmed cases, echo = FALSE, warning = FALSE}
+data4b <- covid_summary(data4a)
+data_total <- final_data(data4b) %>% head(., -1)
+phase_LA <- phase_data(data_total)
+
+df_var <- raw_data(phase_LA) 
+df_var %<>% filter(datex %in% seq(ymd("2020-12-01"), ymd("2021-03-03"), by = 1))
+
+graph_function(df_var)
+
+df_var <- adj_data(phase_LA)
+df_var %<>% filter(datex %in% seq(ymd("2020-10-19"), ymd("2021-01-11"), by = 1))
+
+graph_function(df_var)
+```
+
+
+## Confirmed Cases for Santa Monica
+
+```{r, echo=FALSE, warning = FALSE}
+data_sm <- data4a %>% filter(name == "Santa Monica")
+data_sm2 <- covid_summary(data_sm)
+data_sm3 <- final_data(data_sm2) %>% head(., -1)
+phase_sm <- phase_data(data_sm3)
+
+df_var <- raw_data(phase_sm) 
+df_var %<>% filter(datex %in% seq(ymd("2020-12-01"), ymd("2021-03-03"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "santa_monica_raw.png")
+
+df_var <- adj_data(phase_sm)
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "santa_monica_adj.png")
+```
+
+
+## Confirmed Cases for Lynwood
+
+```{r, echo=FALSE, warning = FALSE}
+data_lw <- data4a %>% filter(name == "Lynwood")
+data_lw2 <- covid_summary(data_lw)
+data_lw3 <- final_data(data_lw2) %>% head(., -1)
+phase_lw <- phase_data(data_lw3)
+
+df_var <- raw_data(phase_lw) 
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "lynwood_raw.png")
+
+df_var <- adj_data(phase_lw)
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "lynwood_adj.png")
+```
+
+
+## Confirmed Cases for Westlake
+
+```{r, echo = FALSE, warning = FALSE}
+data_wl <- data4a %>% filter(name == "Westlake")
+data_wl2 <- covid_summary(data_wl)
+data_wl3 <- final_data(data_wl2) %>% head(., -1)
+phase_wl <- phase_data(data_wl3)
+
+df_var <- raw_data(phase_wl) 
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "westlake_raw.png")
+
+df_var <- adj_data(phase_wl)
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "westlake_adj.png")
+```
+
+
+## Confirmed Cases for Bell
+
+```{r, echo = FALSE, warning = FALSE}
+data_b <- data4a %>% filter(name == "Bell")
+data_b2 <- covid_summary(data_b)
+data_b3 <- final_data(data_b2) %>% head(., -1)
+phase_b <- phase_data(data_b3)
+
+df_var <- raw_data(phase_b) 
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "bell_raw.png")
+
+df_var <- adj_data(phase_b)
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "bell_adj.png")
+```
+
+## Confirmed Cases for Lancaster 
+
+```{r, echo = FALSE, warning = FALSE}
+data_lc <- data4a %>% filter(name == "Lynwood")
+data_lc2 <- covid_summary(data_lc)
+data_lc3 <- final_data(data_lc2) %>% head(., -1)
+phase_lc <- phase_data(data_lc3)
+
+df_var <- raw_data(phase_lc) 
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "lancaster_raw.png")
+
+df_var <- adj_data(phase_lc)
+df_var %<>% filter(datex %in% seq(ymd("2020-03-09"), ymd("2020-11-16"), by = 1))
+
+graph_function(df_var)
+# ggsave(filename = "lancaster_adj.png")
+```
+
